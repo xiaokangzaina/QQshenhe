@@ -29,9 +29,16 @@
       },
       "audit_prompt": {
         "description": "审核提示词",
-        "type": "string",
+        "type": "text",
         "default": "请重点审核色情内容。只有明显命中该风险时判定为不合规；边界不清时判定为疑似；无关内容判定为合规。",
-        "hint": "用于控制AI重点审核方向。例如：只审核色情内容、广告引流、暴力血腥等。图片审核也会按此提示词执行。"
+        "hint": "用于控制AI重点审核方向。例如：只审核色情内容、广告引流、暴力血腥等。图片审核也会按此提示词执行。支持换行填写。",
+        "format": "textarea",
+        "widget": "textarea",
+        "rows": 10,
+        "multiline": true,
+        "style": {
+          "minHeight": "180px"
+        }
       }
     }
   },
@@ -138,9 +145,16 @@
               },
               "audit_prompt": {
                 "description": "审核提示词",
-                "type": "string",
+                "type": "text",
                 "default": "请重点审核色情内容。只有明显命中该风险时判定为不合规；边界不清时判定为疑似；无关内容判定为合规。",
-                "hint": "该群单独使用的AI审核提示词。为空则使用全局 openai_audit.audit_prompt。"
+                "hint": "该群单独使用的AI审核提示词。为空则使用全局 openai_audit.audit_prompt。支持换行填写。",
+                "format": "textarea",
+                "widget": "textarea",
+                "rows": 10,
+                "multiline": true,
+                "style": {
+                  "minHeight": "180px"
+                }
               }
             },
             "display_item": "remark_name"

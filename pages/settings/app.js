@@ -228,9 +228,20 @@ function buildField(key, schema, value, prefix) {
     input.placeholder = "每行一个条目";
     control.appendChild(input);
   } else {
-    input = document.createElement("input");
-    input.type = "text";
-    input.value = String(value ?? schema.default ?? "");
+    const useTextarea = schema.format === "textarea"
+      || schema.widget === "textarea"
+      || schema.multiline === true;
+    if (useTextarea) {
+      input = document.createElement("textarea");
+      input.value = String(value ?? schema.default ?? "");
+      input.rows = Number(schema.rows || 8);
+      input.classList.add("large-textarea");
+      if (schema.placeholder) input.placeholder = schema.placeholder;
+    } else {
+      input = document.createElement("input");
+      input.type = "text";
+      input.value = String(value ?? schema.default ?? "");
+    }
     control.appendChild(input);
   }
 

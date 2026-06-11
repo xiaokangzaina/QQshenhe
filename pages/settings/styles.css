@@ -441,6 +441,12 @@ select {
     resize: vertical;
 }
 
+.field textarea.large-textarea {
+    min-height: 180px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+}
+
 .switch {
     position: relative;
     display: inline-block;
