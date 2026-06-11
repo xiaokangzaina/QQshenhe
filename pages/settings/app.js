@@ -33,7 +33,6 @@ const els = {
   toggleThemeBtn: document.getElementById("toggleThemeBtn"),
   addGroupBtn: document.getElementById("addGroupBtn"),
   saveGroupBtn: document.getElementById("saveGroupBtn"),
-  saveGlobalConfigBtn: document.getElementById("saveGlobalConfigBtn"),
   deleteGroupBtn: document.getElementById("deleteGroupBtn"),
   enabledGroupsInfo: document.getElementById("enabledGroupsInfo"),
   addGroupModal: document.getElementById("addGroupModal"),
@@ -602,42 +601,6 @@ function renderGroupForm(groupPayload) {
     // Render schema fields first (this clears groupForm.innerHTML)
     renderSchemaFields(els.groupForm, schema, config);
 
-    // Build enabled toggle and prepend it to the field grid
-    const field = document.createElement("label");
-    field.className = "field checkbox-field";
-
-    const copy = document.createElement("div");
-    copy.className = "field-copy";
-    const label = document.createElement("div");
-    label.className = "field-label";
-    label.textContent = "是否启用审核";
-    copy.appendChild(label);
-    const hint = document.createElement("div");
-    hint.className = "field-hint";
-    hint.textContent = "关闭后此群的审核功能将完全禁用";
-    copy.appendChild(hint);
-    field.appendChild(copy);
-
-    const control = document.createElement("div");
-    control.className = "field-control";
-    const shell = document.createElement("span");
-    shell.className = "switch";
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.checked = config.enabled !== false;
-    input.dataset.path = "enabled";
-    input.dataset.type = "bool";
-    const slider = document.createElement("span");
-    slider.className = "slider";
-    shell.appendChild(input);
-    shell.appendChild(slider);
-    control.appendChild(shell);
-    field.appendChild(control);
-
-    const grid = els.groupForm.querySelector(".field-grid");
-    if (grid) {
-      grid.insertBefore(field, grid.firstChild);
-    }
 
     els.enabledGroupsInfo.style.display = "none";
     els.deleteGroupBtn.style.display = "";
@@ -670,15 +633,6 @@ async function loadGroupConfig(groupId) {
   renderGroupForm(data);
 }
 
-async function saveGlobalConfig() {
-  if (!els.globalConfigForm) return;
-  const config = collectFormData(els.globalConfigForm);
-  const data = await api.safePost("settings/global", { config });
-  bootstrapData.global_config = data || config;
-  renderGlobalConfigForm();
-  showToast("插件配置已保存");
-}
-
 async function saveGroupConfig() {
   if (!currentGroup) {
     showToast("请先选择一个群配置", "error");
@@ -686,7 +640,8 @@ async function saveGroupConfig() {
   }
 
   const payload = collectFormData(els.groupForm);
-  const { globalConfig, disposalConfig } = splitGlobalAndDisposal(payload);
+  const globalConfig = collectFormData(els.globalConfigForm);
+  const { disposalConfig } = splitGlobalAndDisposal(payload);
 
   const requestBody = {
     group_id: currentGroup.group_id,
@@ -944,14 +899,6 @@ function bindEvents() {
   els.modalSearchInput.addEventListener("input", () => renderModalGroups());
 
   els.modalConfirmBtn.addEventListener("click", () => confirmAddGroup());
-
-  els.saveGlobalConfigBtn?.addEventListener("click", async () => {
-    try {
-      await saveGlobalConfig();
-    } catch (error) {
-      showToast(error.message, "error");
-    }
-  });
 
   els.saveGroupBtn.addEventListener("click", async () => {
     try {
