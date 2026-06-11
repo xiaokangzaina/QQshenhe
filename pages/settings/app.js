@@ -33,6 +33,7 @@ const els = {
   toggleThemeBtn: document.getElementById("toggleThemeBtn"),
   addGroupBtn: document.getElementById("addGroupBtn"),
   saveGroupBtn: document.getElementById("saveGroupBtn"),
+  clearViolationsBtn: document.getElementById("clearViolationsBtn"),
   deleteGroupBtn: document.getElementById("deleteGroupBtn"),
   enabledGroupsInfo: document.getElementById("enabledGroupsInfo"),
   addGroupModal: document.getElementById("addGroupModal"),
@@ -592,6 +593,7 @@ function renderGroupForm(groupPayload) {
     els.groupForm.innerHTML = '<div class="empty-state small-empty">请选择左侧群配置，或点击“添加群配置”。插件全局配置请在上方“插件配置”中编辑。</div>';
     renderEnabledGroupsInfo();
     els.deleteGroupBtn.style.display = "none";
+    els.clearViolationsBtn.style.display = "none";
     els.saveGroupBtn.textContent = "保存当前配置";
   } else {
     // Per-group: show template schema with enabled toggle at the top
@@ -604,6 +606,7 @@ function renderGroupForm(groupPayload) {
 
     els.enabledGroupsInfo.style.display = "none";
     els.deleteGroupBtn.style.display = "";
+    els.clearViolationsBtn.style.display = "";
     els.saveGroupBtn.textContent = "保存此群配置";
   }
 
@@ -707,6 +710,19 @@ async function saveCurrentGroupSilent(group) {
   } catch {}
 }
 
+async function clearViolationCounters() {
+  if (!currentGroup || currentGroup.is_default_group) {
+    showToast("请先选择一个群配置", "error");
+    return;
+  }
+
+  const result = await api.safePost("settings/group/violations/clear", {
+    group_id: currentGroup.group_id,
+  });
+  const total = Number(result?.total_cleared || 0);
+  showToast(total > 0 ? `已清除 ${total} 条违规/禁言计数` : "当前群没有可清除的违规次数");
+}
+
 async function deleteGroupConfig() {
   if (!currentGroup || currentGroup.is_default_group) {
     showToast("不能删除默认全局配置", "error");
@@ -728,6 +744,7 @@ async function deleteGroupConfig() {
   els.groupDetailHeader.style.display = "none";
   els.enabledGroupsInfo.style.display = "none";
   els.deleteGroupBtn.style.display = "none";
+  els.clearViolationsBtn.style.display = "none";
   renderGroupCards(true);
   showToast(result?.deleted ? "群配置已删除" : "未找到该群配置，列表已同步");
 }
@@ -903,6 +920,14 @@ function bindEvents() {
   els.saveGroupBtn.addEventListener("click", async () => {
     try {
       await saveGroupConfig();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
+
+  els.clearViolationsBtn.addEventListener("click", async () => {
+    try {
+      await clearViolationCounters();
     } catch (error) {
       showToast(error.message, "error");
     }

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import time
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -206,15 +207,93 @@ class AuditResultParser:
 # 违规记录管理器
 class ViolationManager:
     """违规记录管理器"""
-    
-    def __init__(self):
+
+    def __init__(self, storage_path: Path | None = None):
+        self.storage_path = storage_path
         self.user_violations = defaultdict(list)  # 用户违规记录
         self.group_violations = defaultdict(list)  # 群组违规记录
         self.user_mutes = defaultdict(list)  # 用户被禁言记录
+        self._load_records()
+
+    @staticmethod
+    def _pair_key(group_id: str, user_id: str) -> str:
+        return f"{group_id}\t{user_id}"
+
+    @staticmethod
+    def _split_pair_key(key: str) -> tuple[str, str]:
+        if "\t" in key:
+            group_id, user_id = key.split("\t", 1)
+            return group_id, user_id
+        if "|" in key:
+            group_id, user_id = key.split("|", 1)
+            return group_id, user_id
+        return key, ""
+
+    def _load_records(self) -> None:
+        if not self.storage_path or not self.storage_path.exists():
+            return
+        try:
+            data = json.loads(self.storage_path.read_text(encoding="utf-8"))
+            self.user_violations = defaultdict(
+                list,
+                {
+                    self._split_pair_key(key): [float(ts) for ts in value]
+                    for key, value in data.get("user_violations", {}).items()
+                    if isinstance(value, list)
+                },
+            )
+            self.group_violations = defaultdict(
+                list,
+                {
+                    str(key): [float(ts) for ts in value]
+                    for key, value in data.get("group_violations", {}).items()
+                    if isinstance(value, list)
+                },
+            )
+            self.user_mutes = defaultdict(
+                list,
+                {
+                    self._split_pair_key(key): [float(ts) for ts in value]
+                    for key, value in data.get("user_mutes", {}).items()
+                    if isinstance(value, list)
+                },
+            )
+            logger.info("违规记录已从本地持久化文件恢复")
+        except Exception as exc:
+            logger.warning(f"读取违规记录持久化文件失败，将使用空记录: {exc}")
+            self.user_violations = defaultdict(list)
+            self.group_violations = defaultdict(list)
+            self.user_mutes = defaultdict(list)
+
+    def _save_records(self) -> None:
+        if not self.storage_path:
+            return
+        try:
+            self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+            data = {
+                "version": 1,
+                "updated_at": time.time(),
+                "user_violations": {
+                    self._pair_key(group_id, user_id): timestamps
+                    for (group_id, user_id), timestamps in self.user_violations.items()
+                },
+                "group_violations": dict(self.group_violations),
+                "user_mutes": {
+                    self._pair_key(group_id, user_id): timestamps
+                    for (group_id, user_id), timestamps in self.user_mutes.items()
+                },
+            }
+            tmp_path = self.storage_path.with_suffix(self.storage_path.suffix + ".tmp")
+            tmp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            tmp_path.replace(self.storage_path)
+        except Exception as exc:
+            logger.warning(f"保存违规记录持久化文件失败: {exc}")
     
     def add_violation(self, group_id: str, user_id: str, violation_type: str):
         """添加违规记录"""
         timestamp = time.time()
+        group_id = str(group_id)
+        user_id = str(user_id)
         
         # 用户违规记录
         self.user_violations[(group_id, user_id)].append(timestamp)
@@ -222,12 +301,12 @@ class ViolationManager:
         # 群组违规记录
         self.group_violations[group_id].append(timestamp)
         
-        # 清理过期记录
-        self._cleanup_expired_records()
+        # 保存记录
+        self._save_records()
     
     def get_user_violation_count(self, group_id: str, user_id: str, time_window: int) -> int:
         """获取用户在指定时间窗口内的违规次数"""
-        key = (group_id, user_id)
+        key = (str(group_id), str(user_id))
         if key not in self.user_violations:
             return 0
         
@@ -237,6 +316,7 @@ class ViolationManager:
     
     def get_group_violation_count(self, group_id: str, time_window: int) -> int:
         """获取群组在指定时间窗口内的违规次数"""
+        group_id = str(group_id)
         if group_id not in self.group_violations:
             return 0
         
@@ -246,46 +326,55 @@ class ViolationManager:
 
     def add_mute(self, group_id: str, user_id: str):
         """添加用户被禁言记录"""
-        self.user_mutes[(group_id, user_id)].append(time.time())
-        self._cleanup_expired_records()
+        self.user_mutes[(str(group_id), str(user_id))].append(time.time())
+        self._save_records()
 
     def get_user_mute_count(self, group_id: str, user_id: str, time_window: int) -> int:
         """获取用户在指定时间窗口内的被禁言次数"""
-        key = (group_id, user_id)
+        key = (str(group_id), str(user_id))
         if key not in self.user_mutes:
             return 0
         cutoff_time = time.time() - time_window
         mutes = [ts for ts in self.user_mutes[key] if ts > cutoff_time]
         return len(mutes)
     
-    def _cleanup_expired_records(self):
-        """清理过期记录（24小时前的记录）"""
-        cutoff_time = time.time() - 86400  # 24小时
-        
-        # 清理用户记录
-        for key in list(self.user_violations.keys()):
-            self.user_violations[key] = [ts for ts in self.user_violations[key] if ts > cutoff_time]
-            if not self.user_violations[key]:
-                del self.user_violations[key]
-        
-        # 清理群组记录
-        for group_id in list(self.group_violations.keys()):
-            self.group_violations[group_id] = [ts for ts in self.group_violations[group_id] if ts > cutoff_time]
-            if not self.group_violations[group_id]:
-                del self.group_violations[group_id]
+    def clear_group_records(self, group_id: str) -> dict[str, int | str]:
+        """手动清除指定群的违规/禁言计数记录。"""
+        normalized_group_id = str(group_id or "").strip()
+        if not normalized_group_id:
+            raise ValueError("group_id is required")
 
-        # 清理禁言记录
+        user_violation_count = 0
+        user_mute_count = 0
+
+        for key in list(self.user_violations.keys()):
+            if key[0] == normalized_group_id:
+                user_violation_count += len(self.user_violations[key])
+                del self.user_violations[key]
+
+        group_violation_count = len(self.group_violations.get(normalized_group_id, []))
+        self.group_violations.pop(normalized_group_id, None)
+
         for key in list(self.user_mutes.keys()):
-            self.user_mutes[key] = [ts for ts in self.user_mutes[key] if ts > cutoff_time]
-            if not self.user_mutes[key]:
+            if key[0] == normalized_group_id:
+                user_mute_count += len(self.user_mutes[key])
                 del self.user_mutes[key]
+
+        self._save_records()
+        return {
+            "group_id": normalized_group_id,
+            "user_violation_count": user_violation_count,
+            "group_violation_count": group_violation_count,
+            "user_mute_count": user_mute_count,
+            "total_cleared": user_violation_count + group_violation_count + user_mute_count,
+        }
 
 # 主插件类
 @register(
     "astrbot_plugin_group_aip_review",
     "xiaokangzaina",
     "基于 OpenAI 兼容接口的群聊消息安全审核插件",
-    "v1.4.8"
+    "v1.4.17"
     )
 class GroupAipReviewPlugin(Star):
     """基于AI审核接口的群聊内容安全审查插件"""
@@ -296,11 +385,12 @@ class GroupAipReviewPlugin(Star):
         self.audit_api = None
         self.audit_api = None
         self.audit_parser = AuditResultParser()
-        self.violation_manager = ViolationManager()
+        plugin_dir = Path(context.plugin_dir) if hasattr(context, "plugin_dir") else Path(__file__).parent
+        violation_records_path = plugin_dir / "data" / "violation_records.json"
+        self.violation_manager = ViolationManager(violation_records_path)
         
         # 初始化 Web 管理页面
-        plugin_dir = Path(context.plugin_dir) if hasattr(context, "plugin_dir") else Path(__file__).parent
-        self.web = AuditWebController(context, config, plugin_dir)
+        self.web = AuditWebController(context, config, plugin_dir, self.violation_manager)
         self.web.register_routes()
         
         # 初始化审核API

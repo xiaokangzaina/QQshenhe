@@ -21,9 +21,16 @@ PLUGIN_NAME = "astrbot_plugin_group_aip_review"
 
 
 class AuditWebController:
-    def __init__(self, context: Context, config: AstrBotConfig, plugin_dir: Path):
+    def __init__(
+        self,
+        context: Context,
+        config: AstrBotConfig,
+        plugin_dir: Path,
+        violation_manager: Any | None = None,
+    ):
         self.context = context
         self.group_cache = GroupInfoCache(context)
+        self.violation_manager = violation_manager
         self.service = AuditPageService(config, plugin_dir, self.group_cache)
 
     def register_routes(self) -> None:
@@ -38,6 +45,12 @@ class AuditWebController:
                 self.page_delete_group,
                 ["POST"],
                 "Delete a group config",
+            ),
+            (
+                "/settings/group/violations/clear",
+                self.page_clear_group_violations,
+                ["POST"],
+                "Clear violation counters for a group",
             ),
         ]
         for path, handler, methods, desc in routes:
@@ -117,4 +130,14 @@ class AuditWebController:
         result = self.service.delete_group_config(group_id)
         return self._jsonify(
             {"ok": True, "message": f"Group config for {group_id} deleted", "data": result}
+        )
+
+    async def page_clear_group_violations(self):
+        payload = await self._request().get_json(force=True, silent=True) or {}
+        group_id = payload.get("group_id")
+        if self.violation_manager is None:
+            raise RuntimeError("Violation manager is unavailable")
+        result = self.violation_manager.clear_group_records(group_id)
+        return self._jsonify(
+            {"ok": True, "message": f"Violation counters for {group_id} cleared", "data": result}
         )
