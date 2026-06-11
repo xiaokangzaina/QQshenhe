@@ -6,44 +6,48 @@
 }
 
 :root {
-    --bg: #ffffff;
-    --bg-accent: rgba(110, 177, 216, 0.18);
-    --text: #1e2a38;
-    --text-primary: #1f1f1f;
-    --muted: #5a7088;
-    --line: rgba(110, 177, 216, 0.2);
-    --accent: #6EB1D8;
-    --accent-dark: #4a8db8;
-    --accent-soft: rgba(110, 177, 216, 0.15);
+    --bg: #fff7fb;
+    --card: rgba(255, 255, 255, 0.92);
+    --bg-accent: rgba(255, 105, 180, 0.16);
+    --text: #3a2331;
+    --text-primary: #26101f;
+    --muted: #8a6177;
+    --line: rgba(255, 105, 180, 0.22);
+    --accent: #ff69b4;
+    --accent-dark: #db4e9b;
+    --accent-soft: rgba(255, 105, 180, 0.14);
     --success: #1f7a59;
     --success-soft: rgba(31, 122, 89, 0.1);
     --warn: #a26a15;
     --warn-soft: rgba(162, 106, 21, 0.12);
     --danger: #b63f2f;
     --danger-soft: rgba(182, 63, 47, 0.12);
-    --shadow: 0 20px 60px rgba(40, 80, 120, 0.1);
+    --shadow: 0 20px 60px rgba(209, 76, 150, 0.12);
+    --shadow-soft: 0 14px 36px rgba(209, 76, 150, 0.10);
     --radius: 24px;
     --radius-md: 18px;
     --radius-sm: 14px;
 }
 
 [data-theme="dark"] {
-    --bg: #11161d;
-    --bg-accent: rgba(110, 177, 216, 0.1);
-    --text: #e7edf5;
-    --text-primary: #e7edf5;
-    --muted: #9eacbd;
-    --line: rgba(110, 177, 216, 0.12);
-    --accent: #6EB1D8;
-    --accent-dark: #5a9cc4;
-    --accent-soft: rgba(110, 177, 216, 0.14);
+    --bg: #171018;
+    --card: rgba(34, 22, 34, 0.94);
+    --bg-accent: rgba(255, 105, 180, 0.10);
+    --text: #f5e8f0;
+    --text-primary: #fff5fb;
+    --muted: #c6a4b8;
+    --line: rgba(255, 151, 204, 0.16);
+    --accent: #ff7ac3;
+    --accent-dark: #e05aa9;
+    --accent-soft: rgba(255, 122, 195, 0.14);
     --success: #74c9b0;
     --success-soft: rgba(116, 201, 176, 0.14);
     --warn: #d5b56d;
     --warn-soft: rgba(213, 181, 109, 0.15);
     --danger: #d88787;
     --danger-soft: rgba(216, 135, 135, 0.15);
-    --shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+    --shadow: 0 24px 70px rgba(0, 0, 0, 0.32);
+    --shadow-soft: 0 14px 36px rgba(0, 0, 0, 0.24);
 }
 
 * {
@@ -131,6 +135,32 @@ select {
     gap: 12px;
     margin-bottom: 12px;
     flex-shrink: 0;
+}
+
+.plugin-config-card {
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--card);
+    padding: 16px;
+    box-shadow: var(--shadow-soft);
+}
+
+.plugin-config-head,
+.group-config-head {
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.plugin-config-head {
+    gap: 16px;
+}
+
+.small-empty {
+    min-height: 72px;
+    border: 1px dashed var(--line);
+    border-radius: 14px;
+    padding: 18px;
 }
 
 .toolbar-field {
@@ -842,6 +872,175 @@ select {
     }
 
     .field {
+        grid-template-columns: 1fr;
+    }
+}
+
+
+/* Pink two-column UI refresh */
+body {
+    background:
+        radial-gradient(circle at 8% 10%, rgba(255, 182, 213, 0.36), transparent 28%),
+        radial-gradient(circle at 92% 0%, rgba(255, 105, 180, 0.18), transparent 32%),
+        var(--bg);
+}
+
+.group-list-panel,
+.group-detail-panel {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--card);
+    box-shadow: var(--shadow-soft);
+    padding: 16px;
+}
+
+.group-detail-panel {
+    padding-right: 10px;
+}
+
+.detail-stack {
+    gap: 18px;
+    padding: 2px 8px 10px 0;
+}
+
+.plugin-config-card,
+.group-config-head,
+.detail-header,
+.enabled-groups-info {
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 246, 251, 0.55));
+    box-shadow: var(--shadow-soft);
+}
+
+[data-theme="dark"] .plugin-config-card,
+[data-theme="dark"] .group-config-head,
+[data-theme="dark"] .detail-header,
+[data-theme="dark"] .enabled-groups-info {
+    background: linear-gradient(180deg, rgba(42, 25, 42, 0.88), rgba(28, 17, 30, 0.72));
+}
+
+.group-config-head {
+    padding: 16px;
+}
+
+.section-title::before {
+    content: "✦";
+    color: var(--accent);
+    margin-right: 8px;
+}
+
+.field-grid {
+    grid-template-columns: repeat(2, minmax(280px, 1fr));
+    gap: 14px;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 124px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.72);
+    box-shadow: 0 8px 24px rgba(209, 76, 150, 0.06);
+}
+
+[data-theme="dark"] .field {
+    background: rgba(36, 24, 38, 0.74);
+}
+
+.field:hover {
+    border-color: rgba(255, 105, 180, 0.42);
+    box-shadow: 0 12px 28px rgba(209, 76, 150, 0.11);
+}
+
+.field:last-child {
+    border-bottom: 1px solid var(--line);
+}
+
+.field.field-wide {
+    grid-column: 1 / -1;
+    min-height: 180px;
+}
+
+.field-copy {
+    padding: 0;
+}
+
+.field-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.field-label::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.field-hint {
+    font-size: 12px;
+}
+
+.field-control {
+    padding-left: 0;
+    align-items: stretch;
+}
+
+.field.checkbox-field {
+    min-height: 104px;
+}
+
+.field.checkbox-field .field-control {
+    justify-content: flex-start;
+    align-items: center;
+}
+
+.field-control input[type="text"],
+.field-control input[type="number"],
+.field-control textarea,
+.field-control select,
+.toolbar-field input {
+    border-color: var(--line);
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 14px;
+}
+
+[data-theme="dark"] .field-control input[type="text"],
+[data-theme="dark"] .field-control input[type="number"],
+[data-theme="dark"] .field-control textarea,
+[data-theme="dark"] .field-control select,
+[data-theme="dark"] .toolbar-field input {
+    background: rgba(24, 16, 27, 0.9);
+}
+
+.field textarea.large-textarea {
+    min-height: 220px;
+}
+
+.group-card:hover,
+.group-card.is-active {
+    background: var(--accent-soft);
+}
+
+.ghost-button {
+    background: var(--accent-soft);
+}
+
+@media (max-width: 980px) {
+    .workspace-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .field-grid {
         grid-template-columns: 1fr;
     }
 }

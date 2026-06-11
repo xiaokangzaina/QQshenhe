@@ -29,7 +29,10 @@ class AuditPageService:
 
     @property
     def default_schema(self) -> dict[str, Any]:
-        return {}
+        template = self.templates.get("default_group_config", {})
+        items = copy.deepcopy(template.get("items", {}))
+        items.pop("group_id", None)
+        return items
 
     @property
     def templates(self) -> dict[str, Any]:
@@ -41,9 +44,10 @@ class AuditPageService:
     def global_schema(self) -> dict[str, Any]:
         """Top-level schema items that are not inside disposal."""
         result = {}
-        for key in ("openai_audit",):
+        for key in ("log_level",):
             if key in self.schema:
-                result[key] = self.schema[key]
+                result[key] = copy.deepcopy(self.schema[key])
+                result[key]["options"] = ["DEBUG", "INFO", "WARNING", "ERROR"]
         return result
 
     # ── bootstrap ──
@@ -90,7 +94,7 @@ class AuditPageService:
     def _get_global_config(self) -> dict[str, Any]:
         """Read top-level config items."""
         result = {}
-        for key in ("openai_audit",):
+        for key in ("log_level",):
             if key in self.config:
                 result[key] = copy.deepcopy(self.config[key])
         return result
@@ -159,16 +163,37 @@ class AuditPageService:
 
         return self._save_custom_group_config(group_id, data)
 
+    def save_global_config(self, global_config: dict[str, Any]) -> dict[str, Any]:
+        self._save_global_config(global_config)
+        return self._get_global_config()
+
     def _save_global_config(self, global_config: dict[str, Any]) -> None:
         """Save top-level config items."""
         for key, value in global_config.items():
             self.config[key] = value
         self.config.save_config()
 
-    def delete_group_config(self, group_id: str) -> None:
+    def delete_group_config(self, group_id: str) -> dict[str, Any]:
+        normalized_group_id = str(group_id or "").strip()
+        if not normalized_group_id:
+            raise ValueError("group_id is required")
+
         group_configs = self._get_group_configs()
-        group_configs = [c for c in group_configs if c.get("group_id") != group_id]
+        before_count = len(group_configs)
+        group_configs = [
+            c
+            for c in group_configs
+            if str(c.get("group_id", "")).strip() != normalized_group_id
+        ]
+        deleted_count = before_count - len(group_configs)
         self._save_group_configs(group_configs)
+        return {
+            "group_id": normalized_group_id,
+            "deleted": deleted_count > 0,
+            "deleted_count": deleted_count,
+            "groups": [self._build_group_entry(cfg) for cfg in group_configs],
+            "enabled_groups": self._get_derived_enabled_groups(),
+        }
 
     # ── entry builders (list) ──
 

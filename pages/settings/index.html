@@ -43,6 +43,24 @@
                         </div>
 
                         <div id="enabledGroupsInfo" class="enabled-groups-info" style="display:none"></div>
+
+                        <section class="plugin-config-card">
+                            <div class="section-head plugin-config-head">
+                                <div>
+                                    <div class="section-title">插件配置</div>
+                                    <div class="section-hint">仅保留日志级别。审核接口、模型和审核提示词请继续在普通插件配置页或群审核处置配置中管理。</div>
+                                </div>
+                                <button class="ghost-button" id="saveGlobalConfigBtn">保存插件配置</button>
+                            </div>
+                            <div id="globalConfigForm" class="form-stack"></div>
+                        </section>
+
+                        <div class="section-head group-config-head">
+                            <div>
+                                <div class="section-title">群审核处置配置</div>
+                                <div class="section-hint">当前选中群的审核开关、通知、禁言、踢出和群级审核提示词。</div>
+                            </div>
+                        </div>
                         <div id="groupForm" class="form-stack"></div>
 
                         <div class="sticky-actions">

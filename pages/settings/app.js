@@ -21,6 +21,7 @@ let themePreference = loadThemePreference();
 
 const els = {
   groupForm: document.getElementById("groupForm"),
+  globalConfigForm: document.getElementById("globalConfigForm"),
   groupList: document.getElementById("groupList"),
   groupSearchInput: document.getElementById("groupSearchInput"),
   groupDetailHeader: document.getElementById("groupDetailHeader"),
@@ -32,6 +33,7 @@ const els = {
   toggleThemeBtn: document.getElementById("toggleThemeBtn"),
   addGroupBtn: document.getElementById("addGroupBtn"),
   saveGroupBtn: document.getElementById("saveGroupBtn"),
+  saveGlobalConfigBtn: document.getElementById("saveGlobalConfigBtn"),
   deleteGroupBtn: document.getElementById("deleteGroupBtn"),
   enabledGroupsInfo: document.getElementById("enabledGroupsInfo"),
   addGroupModal: document.getElementById("addGroupModal"),
@@ -179,6 +181,9 @@ function buildField(key, schema, value, prefix) {
 
   const field = document.createElement("label");
   field.className = "field";
+  if (type === "text" || schema.format === "textarea" || schema.widget === "textarea" || schema.multiline === true) {
+    field.classList.add("field-wide");
+  }
 
   const copy = document.createElement("div");
   copy.className = "field-copy";
@@ -213,6 +218,17 @@ function buildField(key, schema, value, prefix) {
     shell.appendChild(input);
     shell.appendChild(slider);
     control.appendChild(shell);
+  } else if (Array.isArray(schema.options) && schema.options.length) {
+    input = document.createElement("select");
+    const current = String(value ?? schema.default ?? schema.options[0] ?? "");
+    schema.options.forEach((optionValue) => {
+      const option = document.createElement("option");
+      option.value = String(optionValue);
+      option.textContent = String(optionValue);
+      option.selected = String(optionValue) === current;
+      input.appendChild(option);
+    });
+    control.appendChild(input);
   } else if (type === "int") {
     input = document.createElement("input");
     input.type = "number";
@@ -274,7 +290,7 @@ function buildObjectField(path, key, schema, values) {
 
   const grid = document.createElement("div");
   grid.className = "field-grid";
-  Object.entries(schema.items || {}).forEach(([childKey, childSchema]) => {
+  getSortedSchemaEntries(schema.items || {}).forEach(([childKey, childSchema]) => {
     const val = values?.[childKey] ?? childSchema.default;
     grid.appendChild(buildField(childKey, childSchema, val, path));
   });
@@ -282,15 +298,56 @@ function buildObjectField(path, key, schema, values) {
   return wrapper;
 }
 
+function getFieldOrder(key) {
+  const order = [
+    "remark_name",
+    "enabled",
+    "notify_group_id",
+    "enable_text_censor",
+    "enable_image_censor",
+    "audit_prompt",
+    "single_user_violation_threshold",
+    "group_violation_threshold",
+    "time_window",
+    "mute_duration",
+    "mute_kick_threshold",
+    "kick_user",
+    "kick_user_threshold",
+    "is_kick_user_and_block",
+  ];
+  const index = order.indexOf(key);
+  return index === -1 ? 999 : index;
+}
+
+function getSortedSchemaEntries(schema) {
+  return Object.entries(schema || {}).sort(([keyA], [keyB]) => {
+    const orderA = getFieldOrder(keyA);
+    const orderB = getFieldOrder(keyB);
+    if (orderA !== orderB) return orderA - orderB;
+    return keyA.localeCompare(keyB);
+  });
+}
+
 function renderSchemaFields(rootEl, schema, values) {
   rootEl.innerHTML = "";
   const grid = document.createElement("div");
   grid.className = "field-grid";
-  Object.entries(schema).forEach(([key, fieldSchema]) => {
+  getSortedSchemaEntries(schema).forEach(([key, fieldSchema]) => {
     const val = values?.[key] ?? fieldSchema.default;
     grid.appendChild(buildField(key, fieldSchema, val, ""));
   });
   rootEl.appendChild(grid);
+}
+
+function renderGlobalConfigForm() {
+  const schema = bootstrapData?.schema?.global || {};
+  const values = bootstrapData?.global_config || {};
+  if (!els.globalConfigForm) return;
+  if (!Object.keys(schema).length) {
+    els.globalConfigForm.innerHTML = '<div class="empty-state small-empty">暂无可编辑的插件全局配置。</div>';
+    return;
+  }
+  renderSchemaFields(els.globalConfigForm, schema, values);
 }
 
 function collectFormData(rootEl) {
@@ -533,28 +590,10 @@ function renderGroupForm(groupPayload) {
   const isDefault = Boolean(groupPayload.is_default_group);
 
   if (isDefault) {
-    // Default group: show global config + disposal.default
-    const globalSchema = bootstrapData?.schema?.global || {};
-    const globalConfig = bootstrapData?.global_config || {};
-    const defaultSchema = bootstrapData?.schema?.default || {};
-    const defaultConfig = groupPayload.config || {};
-
-    els.groupForm.innerHTML = "";
-
-    // Render global config section
-    if (Object.keys(globalSchema).length > 0) {
-      Object.entries(globalSchema).forEach(([key, fieldSchema]) => {
-        const val = globalConfig[key] ?? fieldSchema.default;
-        els.groupForm.appendChild(buildField(key, fieldSchema, val, "__global__." + key));
-      });
-    }
-
-    // Render disposal.default section
-    renderSchemaFields(els.groupForm, defaultSchema, defaultConfig);
-
+    els.groupForm.innerHTML = '<div class="empty-state small-empty">请选择左侧群配置，或点击“添加群配置”。插件全局配置请在上方“插件配置”中编辑。</div>';
     renderEnabledGroupsInfo();
     els.deleteGroupBtn.style.display = "none";
-    els.saveGroupBtn.textContent = "保存默认全局配置";
+    els.saveGroupBtn.textContent = "保存当前配置";
   } else {
     // Per-group: show template schema with enabled toggle at the top
     const schema = bootstrapData?.schema?.default || {};
@@ -620,6 +659,7 @@ async function loadBootstrapData() {
   const data = await api.safeGet("settings/bootstrap");
   bootstrapData = data;
   allGroups = normalizeGroups(data.groups || []);
+  renderGlobalConfigForm();
 }
 
 async function loadGroupConfig(groupId) {
@@ -628,6 +668,15 @@ async function loadGroupConfig(groupId) {
 
   const data = await api.safeGet("settings/group", { group_id: target });
   renderGroupForm(data);
+}
+
+async function saveGlobalConfig() {
+  if (!els.globalConfigForm) return;
+  const config = collectFormData(els.globalConfigForm);
+  const data = await api.safePost("settings/global", { config });
+  bootstrapData.global_config = data || config;
+  renderGlobalConfigForm();
+  showToast("插件配置已保存");
 }
 
 async function saveGroupConfig() {
@@ -709,19 +758,23 @@ async function deleteGroupConfig() {
     return;
   }
 
-  await api.safePost("settings/group/delete", {
+  const result = await api.safePost("settings/group/delete", {
     group_id: currentGroup.group_id,
   });
 
-  // Switch to default group
-  const defaultGroup = allGroups.find((g) => g.is_default_group);
-  if (defaultGroup) {
-    await loadGroupConfig(defaultGroup.group_id);
-  }
+  currentGroup = null;
+  allGroups = normalizeGroups(result?.groups || []);
+  bootstrapData.groups = allGroups;
+  bootstrapData.enabled_groups = Array.isArray(result?.enabled_groups)
+    ? result.enabled_groups
+    : [];
 
-  await loadBootstrapData();
+  els.groupForm.innerHTML = '<div class="empty-state small-empty">群配置已删除。请选择左侧其他群，或点击“添加群配置”。</div>';
+  els.groupDetailHeader.style.display = "none";
+  els.enabledGroupsInfo.style.display = "none";
+  els.deleteGroupBtn.style.display = "none";
   renderGroupCards(true);
-  showToast("群配置已删除");
+  showToast(result?.deleted ? "群配置已删除" : "未找到该群配置，列表已同步");
 }
 
 /* ── add-group modal ── */
@@ -891,6 +944,14 @@ function bindEvents() {
   els.modalSearchInput.addEventListener("input", () => renderModalGroups());
 
   els.modalConfirmBtn.addEventListener("click", () => confirmAddGroup());
+
+  els.saveGlobalConfigBtn?.addEventListener("click", async () => {
+    try {
+      await saveGlobalConfig();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
 
   els.saveGroupBtn.addEventListener("click", async () => {
     try {

@@ -31,6 +31,7 @@ class AuditWebController:
             ("/settings/bootstrap", self.page_bootstrap, ["GET"], "Load page bootstrap data"),
             ("/settings/available-groups", self.page_available_groups, ["GET"], "List groups without config"),
             ("/settings/group", self.page_get_group, ["GET"], "Get one group config"),
+            ("/settings/global", self.page_save_global, ["POST"], "Save global plugin config"),
             ("/settings/group", self.page_save_group, ["POST"], "Save a group config"),
             (
                 "/settings/group/delete",
@@ -92,6 +93,14 @@ class AuditWebController:
         data = await self.service.get_group_config(group_id)
         return self._jsonify({"ok": True, "data": data})
 
+    async def page_save_global(self):
+        payload = await self._request().get_json(force=True, silent=True) or {}
+        config = payload.get("config") or {}
+        result = self.service.save_global_config(config)
+        return self._jsonify(
+            {"ok": True, "message": "Global config saved", "data": result}
+        )
+
     async def page_save_group(self):
         payload = await self._request().get_json(force=True, silent=True) or {}
         group_id = payload.get("group_id")
@@ -105,7 +114,7 @@ class AuditWebController:
     async def page_delete_group(self):
         payload = await self._request().get_json(force=True, silent=True) or {}
         group_id = payload.get("group_id")
-        self.service.delete_group_config(group_id)
+        result = self.service.delete_group_config(group_id)
         return self._jsonify(
-            {"ok": True, "message": f"Group config for {group_id} deleted"}
+            {"ok": True, "message": f"Group config for {group_id} deleted", "data": result}
         )
