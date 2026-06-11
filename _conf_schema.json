@@ -1,0 +1,152 @@
+{
+  "openai_audit": {
+    "description": "AI审核接口配置",
+    "type": "object",
+    "items": {
+      "base_url": {
+        "description": "中转站接口地址",
+        "type": "string",
+        "default": "https://ruoli.dev/v1",
+        "hint": "ruoli.dev 使用 https://ruoli.dev/v1；兼容 New API / One API / OpenAI 格式"
+      },
+      "api_key": {
+        "description": "中转站API Key",
+        "type": "string",
+        "default": "",
+        "hint": "填写中转站令牌，保存后重载插件"
+      },
+      "model": {
+        "description": "AI审核模型",
+        "type": "string",
+        "default": "gpt-4o-mini",
+        "hint": "图片审核需使用支持视觉输入的模型"
+      },
+      "timeout": {
+        "description": "请求超时秒数",
+        "type": "int",
+        "default": 30,
+        "hint": "默认 30 秒"
+      },
+      "audit_prompt": {
+        "description": "审核提示词",
+        "type": "string",
+        "default": "请重点审核色情内容。只有明显命中该风险时判定为不合规；边界不清时判定为疑似；无关内容判定为合规。",
+        "hint": "用于控制AI重点审核方向。例如：只审核色情内容、广告引流、暴力血腥等。图片审核也会按此提示词执行。"
+      }
+    }
+  },
+  "log_level": {
+    "description": "日志级别",
+    "type": "string",
+    "default": "INFO",
+    "hint": "DEBUG/INFO/WARNING/ERROR"
+  },
+  "disposal": {
+    "description": "审核处置配置",
+    "type": "object",
+    "items": {
+      "group_custom": {
+        "description": "群级别自定义配置",
+        "type": "template_list",
+        "hint": "为不同的群配置审核参数。当前仅保留默认群配置模板，可在配置内自定义备注名。",
+        "templates": {
+          "default_group_config": {
+            "name": "默认群配置",
+            "hint": "适用于大多数群的标准配置",
+            "items": {
+              "group_id": {
+                "description": "群号",
+                "type": "string",
+                "hint": "要配置的群号（纯数字）"
+              },
+              "remark_name": {
+                "description": "备注名",
+                "type": "string",
+                "default": "",
+                "hint": "自定义模板标签显示名称；填写后会替代卡片上的“默认群配置”，不改变真实群名。"
+              },
+              "enabled": {
+                "description": "是否启用审核",
+                "type": "bool",
+                "default": true,
+                "hint": "关闭后此群的审核功能将完全禁用"
+              },
+              "notify_group_id": {
+                "description": "通知群号",
+                "type": "string",
+                "hint": "违规内容通知群号，为空则不启用通知"
+              },
+              "enable_text_censor": {
+                "description": "是否启用文本审核",
+                "type": "bool",
+                "default": true,
+                "hint": "启用后将对文本消息进行审核"
+              },
+              "enable_image_censor": {
+                "description": "是否启用图片审核",
+                "type": "bool",
+                "default": true,
+                "hint": "启用后将对图片消息进行审核"
+              },
+              "single_user_violation_threshold": {
+                "description": "单人违规阈值",
+                "type": "int",
+                "default": 3,
+                "hint": "单人短时间违规次数阈值，默认3次触发禁言"
+              },
+              "group_violation_threshold": {
+                "description": "群违规阈值",
+                "type": "int",
+                "default": 5,
+                "hint": "群内短时间违规次数阈值，默认5次触发全员禁言"
+              },
+              "time_window": {
+                "description": "时间窗口（秒）",
+                "type": "int",
+                "default": 300,
+                "hint": "统计时间窗口，默认5分钟=300秒"
+              },
+              "mute_duration": {
+                "description": "禁言时长（秒）",
+                "type": "int",
+                "default": 86400,
+                "hint": "单人禁言时长，默认1天=86400秒"
+              },
+              "mute_kick_threshold": {
+                "description": "禁言次数踢出阈值",
+                "type": "int",
+                "default": 0,
+                "hint": "用户在统计时间窗口内被禁言达到该次数后踢出，0表示关闭。踢出时是否拉黑由“是否踢出并拉黑用户”控制。"
+              },
+              "kick_user": {
+                "description": "是否启用踢人",
+                "type": "bool",
+                "default": false,
+                "hint": "是否在达到阈值后踢出用户"
+              },
+              "kick_user_threshold": {
+                "description": "踢人阈值",
+                "type": "int",
+                "default": 5,
+                "hint": "用户发送几条违规消息后执行踢群"
+              },
+              "is_kick_user_and_block": {
+                "description": "是否踢出并拉黑用户",
+                "type": "bool",
+                "default": false,
+                "hint": "是否在踢出用户的同时加入黑名单"
+              },
+              "audit_prompt": {
+                "description": "审核提示词",
+                "type": "string",
+                "default": "请重点审核色情内容。只有明显命中该风险时判定为不合规；边界不清时判定为疑似；无关内容判定为合规。",
+                "hint": "该群单独使用的AI审核提示词。为空则使用全局 openai_audit.audit_prompt。"
+              }
+            },
+            "display_item": "remark_name"
+          }
+        }
+      }
+    }
+  }
+}
