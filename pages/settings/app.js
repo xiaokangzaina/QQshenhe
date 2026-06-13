@@ -306,6 +306,8 @@ function getFieldOrder(key) {
     "enable_text_censor",
     "enable_image_censor",
     "audit_prompt",
+    "violation_notice_template",
+    "suspicious_notice_template",
     "single_user_violation_threshold",
     "group_violation_threshold",
     "time_window",

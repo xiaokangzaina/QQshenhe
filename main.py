@@ -21,6 +21,14 @@ except ImportError:
     httpx = None
 
 
+
+
+class SafeNoticeDict(dict):
+    """通知模板安全占位符字典：未知占位符原样保留。"""
+
+    def __missing__(self, key):
+        return "{" + str(key) + "}"
+
 class AuditData:
     """审核数据封装类，用于传递审核相关的信息"""
     
@@ -374,7 +382,7 @@ class ViolationManager:
     "astrbot_plugin_group_aip_review",
     "xiaokangzaina",
     "基于 OpenAI 兼容接口的群聊消息安全审核插件",
-    "v1.4.17"
+    "v1.4.20"
     )
 class GroupAipReviewPlugin(Star):
     """基于AI审核接口的群聊内容安全审查插件"""
@@ -458,7 +466,7 @@ class GroupAipReviewPlugin(Star):
                 for platform in platforms:
                     client = platform.get_client()
                     if hasattr(client, 'send_group_msg'):
-                        if ("群成员：" in message and "处罚结果：" in message) or message.startswith("❓检测到疑似违规内容"):
+                        if audit_data is not None or message.startswith("[CQ:at,") or ("群成员：" in message and "处罚结果：" in message):
                             notification_with_info = message
                         else:
                             notification_with_info = f"{message}\n群：{group_name}（{group_id}）\n用户：{user_nickname}（{user_id}）"
@@ -515,6 +523,27 @@ class GroupAipReviewPlugin(Star):
             # 审核失败，通知Bot主人
             await self._handle_audit_failure(audit_data.event, audit_data.audit_type, audit_data.reason, group_config)
     
+    def _build_at_text(self, audit_data: AuditData) -> str:
+        return (
+            f"[CQ:at,qq={audit_data.user_id}]"
+            if str(audit_data.user_id).isdigit()
+            else str(audit_data.user_nickname or audit_data.user_id)
+        )
+
+    def _render_notice_template(
+        self,
+        template: str,
+        fallback_template: str,
+        values: dict[str, str],
+    ) -> str:
+        source = (template or fallback_template or "").strip() or fallback_template
+        fallback = (fallback_template or "").strip()
+        try:
+            return source.format_map(SafeNoticeDict(values))
+        except Exception as exc:
+            logger.warning(f"通知模板渲染失败，使用默认模板: {exc}")
+            return fallback.format_map(SafeNoticeDict(values))
+
     async def _handle_non_compliant(self, audit_data: AuditData, group_config: Dict):
         """处理不合规内容"""
         group_id = audit_data.group_id
@@ -532,8 +561,16 @@ class GroupAipReviewPlugin(Star):
         """处理疑似违规内容"""
         group_id = audit_data.group_id
         
-        # 发送简化通知给管理员核实
-        notification_msg = f"❓检测到疑似违规内容\n原因：{audit_data.reason}\n用户：{audit_data.user_nickname}（{audit_data.user_id}）"
+        at_text = self._build_at_text(audit_data)
+        notification_msg = self._render_notice_template(
+            group_config.get("suspicious_notice_template", ""),
+            "{at}\n原因：{reason}",
+            {
+                "at": at_text,
+                "type": str(audit_data.audit_type or ""),
+                "reason": str(audit_data.reason or ""),
+            },
+        )
         await self._send_notification(group_id, notification_msg, audit_data.group_name, audit_data.user_nickname, audit_data.user_id, audit_data.event, audit_data)
     
     async def _handle_audit_failure(self, event: AstrMessageEvent, audit_type: str, reason: str, group_config: Dict):
@@ -619,20 +656,19 @@ class GroupAipReviewPlugin(Star):
         else:
             kick_threshold_text = "未启用"
 
-        at_text = (
-            f"[CQ:at,qq={audit_data.user_id}]"
-            if str(audit_data.user_id).isdigit()
-            else f"@{audit_data.user_nickname}"
-        )
-        notification_msg = (
-            f"{at_text}\n"
-            f"⚠️检测到违规内容\n"
-            f"群成员：{audit_data.user_nickname}（{audit_data.user_id}）\n"
-            f"类型：{audit_data.audit_type}\n"
-            f"原因：{audit_data.reason}\n"
-            f"处罚结果：{'、'.join(penalty_parts)}\n"
-            f"违规次数：{user_violations}次\n"
-            f"被踢阈值：{kick_threshold_text}"
+        at_text = self._build_at_text(audit_data)
+        penalty_text = '、'.join(penalty_parts)
+        notification_msg = self._render_notice_template(
+            group_config.get("violation_notice_template", ""),
+            "{at}\n你因{type}违规：{reason}\n处罚结果：{penalty}\n违规次数：{violations}次 被踢阈值：{kick_threshold}",
+            {
+                "at": at_text,
+                "type": str(audit_data.audit_type or ""),
+                "reason": str(audit_data.reason or ""),
+                "penalty": penalty_text,
+                "violations": str(user_violations),
+                "kick_threshold": str(kick_threshold_text),
+            },
         )
         await self._send_notification(
             group_id,
@@ -640,6 +676,8 @@ class GroupAipReviewPlugin(Star):
             audit_data.group_name,
             audit_data.user_nickname,
             audit_data.user_id,
+            None,
+            audit_data,
         )
     
     def _format_mute_duration(self, duration: int) -> str:
@@ -879,6 +917,8 @@ class GroupAipReviewPlugin(Star):
                 "kick_user_threshold": 5,
                 "is_kick_user_and_block": False,
                 "audit_prompt": "",
+                "violation_notice_template": "{at}\n你因{type}违规：{reason}\n处罚结果：{penalty}\n违规次数：{violations}次 被踢阈值：{kick_threshold}",
+                "suspicious_notice_template": "{at}\n原因：{reason}",
                 "__template_key": "default_group_config"
             }
             group_custom.append(new_config)
