@@ -408,7 +408,7 @@ class ViolationManager:
     "astrbot_plugin_group_aip_review",
     "xiaokangzaina",
     "基于 OpenAI 兼容接口的群聊消息安全审核插件",
-    "v1.4.22"
+    "v1.4.23"
     )
 class GroupAipReviewPlugin(Star):
     """基于AI审核接口的群聊内容安全审查插件"""
@@ -563,7 +563,7 @@ class GroupAipReviewPlugin(Star):
             return fallback.format_map(SafeNoticeDict(values))
 
     def _get_time_window_seconds(self, group_config: Dict) -> int:
-        """读取时间窗口配置。v1.4.21 起前端单位为小时；兼容旧版本秒值。"""
+        """读取时间窗口配置。v1.4.23 起前端单位为天；兼容旧版本秒值/小时值。"""
         raw_value = group_config.get("time_window", 1)
         try:
             value = float(raw_value)
@@ -571,11 +571,18 @@ class GroupAipReviewPlugin(Star):
             value = 1.0
         if value <= 0:
             value = 1.0
-        # 兼容旧配置：旧版本 time_window 单位为秒，常见值如 300/600/1800/86400。
-        # 新版本小时值通常不会超过 168（7天），超过时按旧秒值处理。
+        unit = group_config.get("__time_window_unit")
+        # 新版本保存的配置带单位标记，任何数值都按天处理，支持超大天数。
+        if unit == "days":
+            return max(1, int(value * 86400))
+        # 兼容 v1.4.21/v1.4.22 短暂保存过的小时配置。
+        if unit == "hours":
+            return max(1, int(value * 3600))
+        # 兼容更旧配置：旧版本 time_window 单位为秒，常见值如 300/600/1800/86400。
+        # 仅未带单位标记的历史配置才按旧秒值处理。
         if value > 168:
             return max(1, int(value))
-        return max(1, int(value * 3600))
+        return max(1, int(value * 86400))
 
     async def _handle_non_compliant(self, audit_data: AuditData, group_config: Dict):
         """处理不合规内容"""
@@ -946,6 +953,7 @@ class GroupAipReviewPlugin(Star):
                 "single_user_violation_threshold": 3,
                 "group_violation_threshold": 5,
                 "time_window": 1,
+                "__time_window_unit": "days",
                 "mute_duration": 86400,
                 "mute_kick_threshold": 0,
                 "kick_user": False,
@@ -1084,8 +1092,8 @@ class GroupAipReviewPlugin(Star):
         config_info += f"- 审核提示词：{group_config.get('audit_prompt') or self.config.get('openai_audit', {}).get('audit_prompt', '')}\n"
         config_info += f"- 禁言阈值：{group_config.get('single_user_violation_threshold', 3)}次违规后禁言\n"
         time_window_seconds = self._get_time_window_seconds(group_config)
-        time_window_hours = max(1, int((time_window_seconds + 3599) // 3600))
-        config_info += f"- 时间窗口：{time_window_hours}小时\n"
+        time_window_days = max(1, int((time_window_seconds + 86399) // 86400))
+        config_info += f"- 时间窗口：{time_window_days}天\n"
         config_info += f"- 禁言时长：{self._format_mute_duration(group_config.get('mute_duration', 3600))}\n"
         mute_kick_threshold = group_config.get('mute_kick_threshold', 0)
         config_info += f"- 禁言次数踢出：{'关闭' if mute_kick_threshold <= 0 else str(mute_kick_threshold) + '次禁言后踢出'}\n"

@@ -115,12 +115,14 @@ class AuditPageService:
                 cfg.update(data)
                 cfg["group_id"] = group_id
                 cfg["__template_key"] = "default_group_config"
+                cfg["__time_window_unit"] = "days"
                 found = True
                 break
 
         if not found:
             data["group_id"] = group_id
             data["__template_key"] = "default_group_config"
+            data["__time_window_unit"] = "days"
             group_configs.append(data)
 
         self._save_group_configs(group_configs)
@@ -267,15 +269,21 @@ class AuditPageService:
 
     @staticmethod
     def _normalize_config_for_page(cfg: dict[str, Any]) -> dict[str, Any]:
-        """前端 v1.4.21 起按小时展示 time_window，并兼容旧秒值。"""
+        """前端 v1.4.23 起按天展示 time_window，并兼容旧秒值/小时值。"""
         result = copy.deepcopy(cfg)
         raw_value = result.get("time_window")
         try:
             value = float(raw_value)
         except (TypeError, ValueError):
             return result
+        unit = result.get("__time_window_unit")
+        if unit == "days":
+            return result
+        if unit == "hours":
+            result["time_window"] = max(1, int((value + 23) // 24))
+            return result
         if value > 168:
-            result["time_window"] = max(1, int((value + 3599) // 3600))
+            result["time_window"] = max(1, int((value + 86399) // 86400))
         return result
 
     def _get_derived_enabled_groups(self) -> list[str]:
