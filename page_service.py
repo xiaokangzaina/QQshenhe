@@ -230,7 +230,7 @@ class AuditPageService:
             "is_default_group": False,
             "template_key": template_key,
             "template_name": template_name,
-            "config": copy.deepcopy(cfg),
+            "config": self._normalize_config_for_page(cfg),
         }
 
     # ── entry builders (detail) ──
@@ -260,10 +260,23 @@ class AuditPageService:
                 "member_count": member_count,
             },
             "is_default_group": False,
-            "config": copy.deepcopy(cfg),
+            "config": self._normalize_config_for_page(cfg),
         }
 
     # ── helpers ──
+
+    @staticmethod
+    def _normalize_config_for_page(cfg: dict[str, Any]) -> dict[str, Any]:
+        """前端 v1.4.21 起按小时展示 time_window，并兼容旧秒值。"""
+        result = copy.deepcopy(cfg)
+        raw_value = result.get("time_window")
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            return result
+        if value > 168:
+            result["time_window"] = max(1, int((value + 3599) // 3600))
+        return result
 
     def _get_derived_enabled_groups(self) -> list[str]:
         """Derive enabled groups from group_custom configs where enabled is true."""

@@ -66,17 +66,29 @@ class OpenAICompatibleAuditAPI:
             logger.info(f"OpenAI兼容审核客户端初始化完成: {self.base_url}, model={self.model}")
 
     async def _get_http_client(self):
-        if self._http_client is None and HTTPX_AVAILABLE:
+        if (
+            self._http_client is None
+            or getattr(self._http_client, "is_closed", False)
+        ) and HTTPX_AVAILABLE:
             self._http_client = httpx.AsyncClient(
                 timeout=httpx.Timeout(float(self.timeout)),
-                limits=httpx.Limits(max_connections=10, max_keepalive_connections=5)
+                limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
             )
         return self._http_client
 
     async def close(self):
         if self._http_client:
-            await self._http_client.aclose()
-            self._http_client = None
+            try:
+                await self._http_client.aclose()
+            except Exception as exc:
+                logger.debug(f"关闭 OpenAI兼容审核 HTTP 客户端失败: {exc}")
+            finally:
+                self._http_client = None
+
+    async def _reset_http_client(self):
+        """关闭并重建 HTTP 客户端，用于恢复失效的 keep-alive 连接。"""
+        await self.close()
+        return await self._get_http_client()
 
     def _normalize_result(self, text: str) -> Dict:
         import json
@@ -107,9 +119,6 @@ class OpenAICompatibleAuditAPI:
             return {"error": "未安装httpx包，请运行: pip install httpx"}
         if not self.api_key:
             return {"error": "OpenAI兼容审核 API Key 未配置"}
-        client = await self._get_http_client()
-        if not client:
-            return {"error": "HTTP客户端初始化失败"}
         effective_prompt = (audit_prompt or self.audit_prompt).strip()
         payload = {
             "model": self.model,
@@ -121,25 +130,42 @@ class OpenAICompatibleAuditAPI:
                         "你是群聊内容安全审核器。只返回JSON，不要解释。"
                         "格式：{\"conclusion\":\"合规|不合规|疑似\",\"reason\":\"原因\"}。"
                         f"审核提示词：{effective_prompt}"
-                    )
+                    ),
                 },
-                {"role": "user", "content": user_content}
-            ]
+                {"role": "user", "content": user_content},
+            ],
         }
-        try:
-            resp = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-                json=payload,
-            )
-            if resp.status_code >= 400:
-                return {"error": f"OpenAI兼容审核接口错误: {resp.status_code} {resp.text[:200]}"}
-            data = resp.json()
-            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            return self._normalize_result(content)
-        except Exception as e:
-            logger.error(f"OpenAI兼容审核API调用异常: {e}")
-            return {"error": f"API调用异常: {e}"}
+        last_error = None
+        for attempt in range(2):
+            client = await self._get_http_client()
+            if not client:
+                return {"error": "HTTP客户端初始化失败"}
+            try:
+                resp = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+                    json=payload,
+                )
+                if resp.status_code >= 400:
+                    if resp.status_code >= 500 and attempt == 0:
+                        logger.warning(
+                            f"OpenAI兼容审核接口服务端错误 {resp.status_code}，重建客户端后重试"
+                        )
+                        await self._reset_http_client()
+                        continue
+                    return {"error": f"OpenAI兼容审核接口错误: {resp.status_code} {resp.text[:200]}"}
+                data = resp.json()
+                content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                return self._normalize_result(content)
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    f"OpenAI兼容审核API调用异常，第{attempt + 1}次: {type(e).__name__}: {e}"
+                )
+                if attempt == 0:
+                    await self._reset_http_client()
+                    continue
+        return {"error": f"API调用异常: {type(last_error).__name__}: {last_error}"}
 
     async def text_censor(self, text: str, audit_prompt: str = "") -> Dict:
         return await self._chat(f"请审核以下群聊文本：\n{text}", audit_prompt)
@@ -382,7 +408,7 @@ class ViolationManager:
     "astrbot_plugin_group_aip_review",
     "xiaokangzaina",
     "基于 OpenAI 兼容接口的群聊消息安全审核插件",
-    "v1.4.20"
+    "v1.4.22"
     )
 class GroupAipReviewPlugin(Star):
     """基于AI审核接口的群聊内容安全审查插件"""
@@ -390,7 +416,6 @@ class GroupAipReviewPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self.config = config
-        self.audit_api = None
         self.audit_api = None
         self.audit_parser = AuditResultParser()
         plugin_dir = Path(context.plugin_dir) if hasattr(context, "plugin_dir") else Path(__file__).parent
@@ -414,15 +439,8 @@ class GroupAipReviewPlugin(Star):
             timeout=openai_config.get("timeout", 30),
             audit_prompt=openai_config.get("audit_prompt", ""),
         )
-        self.audit_api = self.audit_api
         logger.info("OpenAI兼容内容审核API初始化完成")
     
-    
-    async def terminate(self):
-        """插件卸载时关闭HTTP客户端"""
-        if self.audit_api:
-            await self.audit_api.close()
-            logger.info("AI审核 HTTP客户端已关闭")
     
     def get_group_config(self, group_id: str) -> Dict:
         """获取群组配置；未配置的群不使用任何全局处置配置。"""
@@ -544,6 +562,21 @@ class GroupAipReviewPlugin(Star):
             logger.warning(f"通知模板渲染失败，使用默认模板: {exc}")
             return fallback.format_map(SafeNoticeDict(values))
 
+    def _get_time_window_seconds(self, group_config: Dict) -> int:
+        """读取时间窗口配置。v1.4.21 起前端单位为小时；兼容旧版本秒值。"""
+        raw_value = group_config.get("time_window", 1)
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            value = 1.0
+        if value <= 0:
+            value = 1.0
+        # 兼容旧配置：旧版本 time_window 单位为秒，常见值如 300/600/1800/86400。
+        # 新版本小时值通常不会超过 168（7天），超过时按旧秒值处理。
+        if value > 168:
+            return max(1, int(value))
+        return max(1, int(value * 3600))
+
     async def _handle_non_compliant(self, audit_data: AuditData, group_config: Dict):
         """处理不合规内容"""
         group_id = audit_data.group_id
@@ -594,7 +627,7 @@ class GroupAipReviewPlugin(Star):
     async def _check_and_apply_punishment(self, audit_data: AuditData, group_config: Dict):
         """检查并应用惩罚措施；不合规时只发送一条合并后的简洁通知。"""
         group_id = audit_data.group_id
-        time_window = group_config.get("time_window", 300)
+        time_window = self._get_time_window_seconds(group_config)
 
         user_violations = self.violation_manager.get_user_violation_count(
             group_id, audit_data.user_id, time_window
@@ -844,8 +877,10 @@ class GroupAipReviewPlugin(Star):
         logger.info("群聊内容安全审查插件初始化完成")
     
     async def terminate(self):
-        """插件销毁"""
-        logger.info("群聊内容安全审查插件已卸载")
+        """插件销毁时关闭 HTTP 客户端。"""
+        if self.audit_api:
+            await self.audit_api.close()
+        logger.info("群聊内容安全审查插件已卸载，AI审核 HTTP客户端已关闭")
 
     # 命令：开启内容审核
     @filter.command("开启内容审核")
@@ -910,7 +945,7 @@ class GroupAipReviewPlugin(Star):
                 "enable_image_censor": True,
                 "single_user_violation_threshold": 3,
                 "group_violation_threshold": 5,
-                "time_window": 300,
+                "time_window": 1,
                 "mute_duration": 86400,
                 "mute_kick_threshold": 0,
                 "kick_user": False,
@@ -1048,6 +1083,9 @@ class GroupAipReviewPlugin(Star):
         config_info += f"- 图片审核：{'✅启用' if enable_image_censor else '❌禁用'}\n"
         config_info += f"- 审核提示词：{group_config.get('audit_prompt') or self.config.get('openai_audit', {}).get('audit_prompt', '')}\n"
         config_info += f"- 禁言阈值：{group_config.get('single_user_violation_threshold', 3)}次违规后禁言\n"
+        time_window_seconds = self._get_time_window_seconds(group_config)
+        time_window_hours = max(1, int((time_window_seconds + 3599) // 3600))
+        config_info += f"- 时间窗口：{time_window_hours}小时\n"
         config_info += f"- 禁言时长：{self._format_mute_duration(group_config.get('mute_duration', 3600))}\n"
         mute_kick_threshold = group_config.get('mute_kick_threshold', 0)
         config_info += f"- 禁言次数踢出：{'关闭' if mute_kick_threshold <= 0 else str(mute_kick_threshold) + '次禁言后踢出'}\n"

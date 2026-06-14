@@ -108,10 +108,10 @@
                 "hint": "群内短时间违规次数阈值，默认5次触发全员禁言"
               },
               "time_window": {
-                "description": "时间窗口（秒）",
+                "description": "时间窗口（小时）",
                 "type": "int",
-                "default": 300,
-                "hint": "统计时间窗口，默认5分钟=300秒"
+                "default": 1,
+                "hint": "统计时间窗口，单位：小时。默认 1 小时；处罚判断只统计该时间范围内的违规/禁言次数。旧版本秒值会自动兼容换算。"
               },
               "mute_duration": {
                 "description": "禁言时长（秒）",
