@@ -117,7 +117,7 @@
                 "description": "禁言时长（秒）",
                 "type": "int",
                 "default": 86400,
-                "hint": "单人禁言时长，默认1天=86400秒"
+                "hint": "单人禁言时长，默认1天=86400秒；填 0 表示不禁言，只撤回，不会解除已有禁言。"
               },
               "mute_kick_threshold": {
                 "description": "禁言次数踢出阈值",
@@ -160,7 +160,7 @@
                 "description": "确认违规通知模板",
                 "type": "text",
                 "default": "{at}\n你因{type}违规：{reason}\n处罚结果：{penalty}\n违规次数：{violations}次 被踢阈值：{kick_threshold}",
-                "hint": "确认违规后发送的群通知模板，支持换行。占位符中文解释：{at}=艾特违规者，{type}=违规类型，{reason}=违规原因，{penalty}=处罚结果，{violations}=违规次数，{kick_threshold}=被踢阈值。未知占位符会原样保留。",
+                "hint": "确认违规后发送的群通知模板，支持换行。占位符中文解释：{at}=艾特违规者，{type}=违规类型，{reason}=违规原因，{penalty}=处罚结果，{violations}=违规次数，{kick_threshold}=被踢阈值。注意：未启用踢人时，包含“违规次数”或“被踢阈值”的行会自动隐藏。未知占位符会原样保留。",
                 "format": "textarea",
                 "widget": "textarea",
                 "rows": 5,

@@ -1,4 +1,3 @@
-import asyncio
 import json
 import time
 from pathlib import Path
@@ -91,7 +90,6 @@ class OpenAICompatibleAuditAPI:
         return await self._get_http_client()
 
     def _normalize_result(self, text: str) -> Dict:
-        import json
         raw = (text or "").strip()
         if raw.startswith("```"):
             raw = raw.strip("`").strip()
@@ -408,7 +406,7 @@ class ViolationManager:
     "astrbot_plugin_group_aip_review",
     "xiaokangzaina",
     "基于 OpenAI 兼容接口的群聊消息安全审核插件",
-    "v1.4.23"
+    "v1.4.25"
     )
 class GroupAipReviewPlugin(Star):
     """基于AI审核接口的群聊内容安全审查插件"""
@@ -562,6 +560,16 @@ class GroupAipReviewPlugin(Star):
             logger.warning(f"通知模板渲染失败，使用默认模板: {exc}")
             return fallback.format_map(SafeNoticeDict(values))
 
+    @staticmethod
+    def _strip_kick_stats_from_notice(message: str) -> str:
+        """踢人未启用时，移除违规次数/被踢阈值相关通知行。"""
+        lines = str(message or "").splitlines()
+        filtered = [
+            line for line in lines
+            if "违规次数" not in line and "被踢阈值" not in line
+        ]
+        return "\n".join(filtered).strip()
+
     def _get_time_window_seconds(self, group_config: Dict) -> int:
         """读取时间窗口配置。v1.4.23 起前端单位为天；兼容旧版本秒值/小时值。"""
         raw_value = group_config.get("time_window", 1)
@@ -656,7 +664,12 @@ class GroupAipReviewPlugin(Star):
             group_id, audit_data.user_id, time_window
         )
 
-        should_mute = single_threshold > 0 and user_violations >= single_threshold
+        mute_duration = int(group_config.get("mute_duration", 86400) or 0)
+        should_mute = (
+            single_threshold > 0
+            and mute_duration > 0
+            and user_violations >= single_threshold
+        )
         projected_mute_count = mute_count + 1 if should_mute else mute_count
         should_kick_by_mute = (
             mute_kick_threshold > 0
@@ -673,7 +686,6 @@ class GroupAipReviewPlugin(Star):
             mute_count = projected_mute_count
             penalty_parts.append("已踢出并拉黑" if block_on_kick else "已踢出")
         elif should_mute:
-            mute_duration = group_config.get("mute_duration", 86400)
             await self._mute_user(audit_data.event, mute_duration)
             self.violation_manager.add_mute(group_id, audit_data.user_id)
             mute_count = self.violation_manager.get_user_mute_count(
@@ -710,6 +722,8 @@ class GroupAipReviewPlugin(Star):
                 "kick_threshold": str(kick_threshold_text),
             },
         )
+        if not kick_enabled:
+            notification_msg = self._strip_kick_stats_from_notice(notification_msg)
         await self._send_notification(
             group_id,
             notification_msg,
@@ -744,8 +758,12 @@ class GroupAipReviewPlugin(Star):
             return f"{duration} 秒"
     
     async def _mute_user(self, event: AstrMessageEvent, duration: int):
-        """禁言用户"""
+        """禁言用户。duration<=0 表示不禁言，避免 OneBot 将 0 解释为解除禁言。"""
         try:
+            duration = int(duration or 0)
+            if duration <= 0:
+                logger.info(f"禁言时长为 {duration} 秒，跳过禁言，避免触发解除禁言")
+                return
             await event.bot.set_group_ban(
                 group_id=event.get_group_id(),
                 user_id=event.get_sender_id(),
