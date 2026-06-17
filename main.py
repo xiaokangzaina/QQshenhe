@@ -406,7 +406,7 @@ class ViolationManager:
     "astrbot_plugin_group_aip_review",
     "xiaokangzaina",
     "基于 OpenAI 兼容接口的群聊消息安全审核插件",
-    "v1.4.25"
+    "v1.4.26"
     )
 class GroupAipReviewPlugin(Star):
     """基于AI审核接口的群聊内容安全审查插件"""
@@ -665,14 +665,12 @@ class GroupAipReviewPlugin(Star):
         )
 
         mute_duration = int(group_config.get("mute_duration", 86400) or 0)
-        should_mute = (
-            single_threshold > 0
-            and mute_duration > 0
-            and user_violations >= single_threshold
-        )
+        mute_enabled = single_threshold > 0 and mute_duration > 0
+        should_mute = mute_enabled and user_violations >= single_threshold
         projected_mute_count = mute_count + 1 if should_mute else mute_count
         should_kick_by_mute = (
-            mute_kick_threshold > 0
+            kick_enabled
+            and mute_kick_threshold > 0
             and should_mute
             and projected_mute_count >= mute_kick_threshold
         )
@@ -699,9 +697,16 @@ class GroupAipReviewPlugin(Star):
             penalty_parts.append("已开启全员禁言")
 
         if not muted and not kicked:
-            penalty_parts.append("未达到禁言/踢出阈值")
+            if not mute_enabled and not kick_enabled:
+                penalty_parts.append("未开启禁言/踢出")
+            elif not mute_enabled:
+                penalty_parts.append("未开启禁言")
+            elif not kick_enabled:
+                penalty_parts.append("未开启踢出")
+            else:
+                penalty_parts.append("未达到禁言/踢出阈值")
 
-        if mute_kick_threshold > 0:
+        if kick_enabled and mute_kick_threshold > 0:
             kick_threshold_text = f"{mute_count}/{mute_kick_threshold}"
         elif kick_enabled and kick_threshold > 0:
             kick_threshold_text = f"{user_violations}/{kick_threshold}"
