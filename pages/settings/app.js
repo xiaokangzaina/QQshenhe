@@ -46,6 +46,12 @@ const els = {
   deleteConfirmBody: document.getElementById("deleteConfirmBody"),
   deleteConfirmCancelBtn: document.getElementById("deleteConfirmCancelBtn"),
   deleteConfirmOkBtn: document.getElementById("deleteConfirmOkBtn"),
+  overviewTotal: document.getElementById("overviewTotal"),
+  overviewEnabled: document.getElementById("overviewEnabled"),
+  overviewDisabled: document.getElementById("overviewDisabled"),
+  overviewActiveName: document.getElementById("overviewActiveName"),
+  overviewActiveSub: document.getElementById("overviewActiveSub"),
+  overviewProgressFill: document.getElementById("overviewProgressFill"),
 };
 
 /* ── theme ── */
@@ -63,6 +69,16 @@ function saveThemePreference() {
   try {
     window.localStorage.setItem(THEME_STORAGE_KEY, themePreference);
   } catch {}
+}
+
+async function persistThemePreference() {
+  saveThemePreference();
+  if (!api) return;
+  try {
+    await api.safePost("settings/theme", { theme: themePreference });
+  } catch (error) {
+    showToast("主题已本地保存，远端保存失败", "error");
+  }
 }
 
 function getThemeButtonLabel() {
@@ -109,7 +125,7 @@ function syncThemeFromContext(context) {
   updateThemeButton();
 }
 
-function cycleThemePreference() {
+async function cycleThemePreference() {
   if (themePreference === "auto") {
     themePreference = "dark";
   } else if (themePreference === "dark") {
@@ -117,8 +133,8 @@ function cycleThemePreference() {
   } else {
     themePreference = "auto";
   }
-  saveThemePreference();
   syncThemeFromContext(bridge?.getContext?.());
+  await persistThemePreference();
 }
 
 function bindSystemTheme() {
@@ -408,8 +424,41 @@ function filterGroups() {
   });
 }
 
+function refreshOverview(activeGroup = currentGroup) {
+  const enabledGroups = Array.isArray(bootstrapData?.enabled_groups)
+    ? bootstrapData.enabled_groups.map(String)
+    : [];
+  const managedGroups = allGroups.filter((group) => !group.is_default_group);
+  const total = allGroups.length;
+  const enabled = managedGroups.filter((group) => enabledGroups.includes(String(group.group_id))).length;
+  const disabled = Math.max(managedGroups.length - enabled, 0);
+  const coverage = managedGroups.length ? Math.round((enabled / managedGroups.length) * 100) : 0;
+
+  if (els.overviewTotal) els.overviewTotal.textContent = String(total);
+  if (els.overviewEnabled) els.overviewEnabled.textContent = String(enabled);
+  if (els.overviewDisabled) els.overviewDisabled.textContent = String(disabled);
+  if (els.overviewProgressFill) els.overviewProgressFill.style.width = `${coverage}%`;
+
+  if (activeGroup) {
+    const info = activeGroup.group_info || {};
+    const groupName = info.group_name || activeGroup.group_name || "群 " + activeGroup.group_id;
+    if (els.overviewActiveName) els.overviewActiveName.textContent = groupName;
+    if (els.overviewActiveSub) {
+      els.overviewActiveSub.textContent = activeGroup.is_default_group
+        ? `默认模板 · ${coverage}% 群组启用`
+        : enabledGroups.includes(String(activeGroup.group_id))
+          ? "当前群已启用审核策略"
+          : "当前群尚未启用审核策略";
+    }
+  } else {
+    if (els.overviewActiveName) els.overviewActiveName.textContent = "等待选择";
+    if (els.overviewActiveSub) els.overviewActiveSub.textContent = `${coverage}% 群组启用`;
+  }
+}
+
 function renderGroupCards(forceRebuild = false) {
   const groups = filterGroups();
+  refreshOverview();
   els.groupListCount.textContent = `${groups.length} 个群配置`;
 
   if (!groups.length) {
@@ -525,7 +574,7 @@ function updateCardBadges(card, group, enabledGroups) {
     if (enabledGroups.includes(String(group.group_id))) {
       badges.push({ cls: "group-card-badge enabled", text: "已启用" });
     } else {
-      badges.push({ cls: "group-card-badge disabled", text: "已停用" });
+      badges.push({ cls: "group-card-badge disabled", text: "未启用" });
     }
   }
 
@@ -540,6 +589,7 @@ function updateCardBadges(card, group, enabledGroups) {
 /* ── group detail ── */
 function renderGroupDetailHeader(groupPayload) {
   const group = groupPayload;
+  refreshOverview(group);
   const info = group.group_info || {};
   const groupName = info.group_name || group.group_name || "群 " + group.group_id;
   const groupId = group.group_id || "";
@@ -625,6 +675,12 @@ function switchGroup(group) {
 /* ── API helpers ── */
 async function loadBootstrapData() {
   const data = await api.safeGet("settings/bootstrap");
+  const savedTheme = data?.page_theme;
+  if (["auto", "light", "dark"].includes(savedTheme)) {
+    themePreference = savedTheme;
+    saveThemePreference();
+    syncThemeFromContext(bridge?.getContext?.());
+  }
   bootstrapData = data;
   allGroups = normalizeGroups(data.groups || []);
   renderGlobalConfigForm();

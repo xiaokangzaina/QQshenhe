@@ -36,6 +36,7 @@ class AuditWebController:
     def register_routes(self) -> None:
         routes = [
             ("/settings/bootstrap", self.page_bootstrap, ["GET"], "Load page bootstrap data"),
+            ("/settings/theme", self.page_save_theme, ["POST"], "Save page theme preference"),
             ("/settings/available-groups", self.page_available_groups, ["GET"], "List groups without config"),
             ("/settings/group", self.page_get_group, ["GET"], "Get one group config"),
             ("/settings/global", self.page_save_global, ["POST"], "Save global plugin config"),
@@ -95,6 +96,11 @@ class AuditWebController:
     async def page_bootstrap(self):
         data = await self.service.get_bootstrap()
         return self._jsonify({"ok": True, "data": data})
+
+    async def page_save_theme(self):
+        payload = await self._request().get_json(force=True, silent=True) or {}
+        result = self.service.save_page_theme(payload.get("theme", "auto"))
+        return self._jsonify({"ok": True, "message": "Theme saved", "data": result})
 
     async def page_available_groups(self):
         data = await self.service.get_available_groups()

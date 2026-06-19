@@ -406,7 +406,7 @@ class ViolationManager:
     "astrbot_plugin_group_aip_review",
     "xiaokangzaina",
     "基于 OpenAI 兼容接口的群聊消息安全审核插件",
-    "v1.4.26"
+    "v1.5.0"
     )
 class GroupAipReviewPlugin(Star):
     """基于AI审核接口的群聊内容安全审查插件"""

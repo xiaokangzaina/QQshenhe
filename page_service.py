@@ -70,6 +70,7 @@ class AuditPageService:
             "groups": groups,
             "enabled_groups": self._get_derived_enabled_groups(),
             "global_config": self._get_global_config(),
+            "page_theme": self._get_page_theme(),
         }
 
     ## available groups (for add-group picker)
@@ -98,6 +99,18 @@ class AuditPageService:
             if key in self.config:
                 result[key] = copy.deepcopy(self.config[key])
         return result
+
+    def _get_page_theme(self) -> str:
+        theme = str(self.config.get("page_theme", "auto") or "auto")
+        return theme if theme in {"auto", "light", "dark"} else "auto"
+
+    def save_page_theme(self, theme: str) -> dict[str, Any]:
+        theme = str(theme or "auto").strip()
+        if theme not in {"auto", "light", "dark"}:
+            theme = "auto"
+        self.config["page_theme"] = theme
+        self.config.save_config()
+        return {"theme": theme}
 
     # ── config write ──
 
