@@ -3,6 +3,7 @@ import time
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 from collections import defaultdict
+from urllib.parse import urlparse
 
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
@@ -168,11 +169,38 @@ class OpenAICompatibleAuditAPI:
     async def text_censor(self, text: str, audit_prompt: str = "") -> Dict:
         return await self._chat(f"请审核以下群聊文本：\n{text}", audit_prompt)
 
+    @staticmethod
+    def _is_valid_image_reference(value: str) -> bool:
+        parsed = urlparse(str(value or ""))
+        if parsed.scheme in ("http", "https"):
+            return bool(parsed.netloc)
+        if parsed.scheme == "data":
+            return str(value).startswith("data:image/") and ";base64," in str(value)
+        return False
+
+    @staticmethod
+    def _build_image_content(image_reference: str, as_object: bool = True) -> Dict:
+        if as_object:
+            return {"type": "image_url", "image_url": {"url": image_reference}}
+        return {"type": "image_url", "image_url": image_reference}
+
     async def image_censor(self, image_url: str, audit_prompt: str = "") -> Dict:
-        return await self._chat([
-            {"type": "text", "text": "请审核这张群聊图片是否违规。"},
-            {"type": "image_url", "image_url": {"url": image_url}},
+        if not self._is_valid_image_reference(image_url):
+            return {"error": f"图片地址格式无效: {str(image_url or '')[:120]}"}
+
+        text_content = {"type": "text", "text": "请审核这张群聊图片是否违规。"}
+        result = await self._chat([
+            text_content,
+            self._build_image_content(image_url, as_object=True),
         ], audit_prompt)
+        error = str(result.get("error", "")) if isinstance(result, dict) else ""
+        if "image_url" in error and "invalid format" in error.lower():
+            logger.warning("审核接口不接受对象格式 image_url，改用字符串格式重试")
+            return await self._chat([
+                text_content,
+                self._build_image_content(image_url, as_object=False),
+            ], audit_prompt)
+        return result
 
 # 审核结果解析器
 class AuditResultParser:
@@ -406,7 +434,7 @@ class ViolationManager:
     "astrbot_plugin_group_aip_review",
     "xiaokangzaina",
     "基于 OpenAI 兼容接口的群聊消息安全审核插件",
-    "v1.5.0"
+    "v1.5.1"
     )
 class GroupAipReviewPlugin(Star):
     """基于AI审核接口的群聊内容安全审查插件"""
@@ -809,6 +837,19 @@ class GroupAipReviewPlugin(Star):
         except Exception as e:
             logger.error(f"全员禁言失败: {e}")
     
+    async def _build_image_audit_reference(self, component: Image) -> Optional[str]:
+        """生成 OpenAI 兼容视觉接口可接受的图片引用。"""
+        raw_value = str(component.url or component.file or "").strip()
+        if self.audit_api and self.audit_api._is_valid_image_reference(raw_value):
+            return raw_value
+        try:
+            image_base64 = await component.convert_to_base64()
+            if image_base64:
+                return f"data:image/jpeg;base64,{image_base64}"
+        except Exception as exc:
+            logger.warning(f"图片转 base64 失败，跳过该图片审核: {type(exc).__name__}: {exc}")
+        return None
+
     @filter.event_message_type(filter.EventMessageType.ALL)
     @filter.platform_adapter_type(filter.PlatformAdapterType.AIOCQHTTP)
     async def on_message(self, event: AstrMessageEvent):
@@ -854,10 +895,12 @@ class GroupAipReviewPlugin(Star):
         message_text = event.message_str
         image_urls = []
         
-        # 提取图片URL
+        # 提取图片引用。公网 URL 直接传递；本地/file/base64 等转成 data:image;base64。
         for component in event.get_messages():
-            if isinstance(component, Image) and component.url:
-                image_urls.append(component.url)
+            if isinstance(component, Image):
+                image_reference = await self._build_image_audit_reference(component)
+                if image_reference:
+                    image_urls.append(image_reference)
         
         # 文本审核
         enable_text_censor = group_config.get("enable_text_censor", True)

@@ -2,6 +2,12 @@
 
 基于 OpenAI 兼容接口的 AstrBot 群聊消息安全审核插件。
 
+## v1.5.1
+
+- 修复图片审核 `image_url invalid format` 报错。
+- 图片消息支持公网 URL 与 `data:image/jpeg;base64,...` 兼容传入。
+- 优化配置页混色主题和右侧配置区滚动体验。
+
 ## v1.5.0 重大UI更新
 
 - 更换插件头像/logo 为新的“插电”头像。
